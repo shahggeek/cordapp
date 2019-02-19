@@ -4,6 +4,7 @@ import com.google.common.collect.ImmutableList;
 import net.corda.core.contracts.ContractState;
 import net.corda.core.identity.AbstractParty;
 import net.corda.core.identity.Party;
+import org.bouncycastle.jcajce.provider.digest.SHA256;
 import org.bson.BsonBinary;
 import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
@@ -29,7 +30,7 @@ public class TradeState implements ContractState {
     Party initiatingParty;
     Party counterparty;
 
-  
+    private static Codec<BsonDocument> DOCUMENT_CODEC = new BsonDocumentCodec();
 
     public TradeState(String tradeId, String book, String trader, BigDecimal amount, Party initiatingParty, Party counterparty){
         this.tradeId = tradeId;
@@ -75,6 +76,32 @@ public class TradeState implements ContractState {
         return ImmutableList.of(initiatingParty,counterparty);
     }
 
-   
+    public byte[] getTradeStateAsBson() throws NoSuchAlgorithmException {
+        BsonDocument bdoc = new BsonDocument();
+        bdoc.put("tradeId", new BsonString(tradeId));
+        bdoc.put("book", new BsonString(book));
+        bdoc.put("trader", new BsonString(trader));
+        bdoc.put("amount", new BsonString(amount.toString()));
+        byte[] payload = toInputStream(bdoc);
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(payload);
+        StringBuffer stringBuffer = new StringBuffer();
+        for (byte bytes : digest) {
+            stringBuffer.append(String.format("%02x", bytes & 0xff));
+        }
+
+        BsonDocument finaldoc = new BsonDocument();
+        finaldoc.put("payload", new BsonBinary(payload));
+        finaldoc.put("payloadhash", new BsonString(stringBuffer.toString()));
+
+        return toInputStream(finaldoc);
+    }
+
+    private static byte[] toInputStream(final BsonDocument document) {
+        BasicOutputBuffer outputBuffer = new BasicOutputBuffer();
+        BsonBinaryWriter writer = new BsonBinaryWriter(outputBuffer);
+        DOCUMENT_CODEC.encode(writer, document, EncoderContext.builder().isEncodingCollectibleDocument(true).build());
+        // return new ByteArrayInputStream(outputBuffer.toByteArray());
+        return outputBuffer.toByteArray();
+    }
 
 }
