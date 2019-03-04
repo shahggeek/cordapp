@@ -47,12 +47,11 @@ public class ExampleClientRPC {
             BsonDocument bsonDocument = fromInputStream(new ByteArrayInputStream(tradeStateAsBson));
             byte [] payload = ((BsonBinary)bsonDocument.get("payload")).getData();
             BsonDocument bsonDocumentReal = fromInputStream(new ByteArrayInputStream(payload));
-            System.out.println("{payload: }"+ bsonDocumentReal.toString());
-            BsonValue trader = bsonDocumentReal.get("trader");
-            System.out.println("{trader: }"+ trader.toString());
+            System.out.println("{Trade payload: }"+ bsonDocumentReal.toString());
             BsonValue payloadhash = bsonDocument.get("payloadhash");
-            System.out.println("{payloadhash: }"+ payloadhash.asString().getValue());
+            System.out.println("{Trade payloadhash: }"+ payloadhash.asString().getValue());
 
+            //Inserting into MongoDB
             BsonDocument mongoDbDoc = new BsonDocument();
             mongoDbDoc.put("dataString", new BsonString(bsonDocumentReal.toString()));
             mongoDbDoc.put("dataBinary", new BsonBinary(payload));
@@ -62,26 +61,27 @@ public class ExampleClientRPC {
             MongoHelper mongoHelper = new MongoHelper();
             MongoDatabase cordaDb = mongoHelper.getDatabase();
             MongoCollection<BsonDocument> ledger = cordaDb.getCollection("ledger", BsonDocument.class);
-           // ledger.insertOne(mongoDbDoc);
+            ledger.insertOne(mongoDbDoc);
             System.out.println("Bson Record Inserted in MongoDb");
 
+            //Fetching from MongoDB and comparing hash
             FindIterable<BsonDocument> bsonFromDB = ledger.find();
             MongoCursor<BsonDocument> bsonDocumentMongoCursor = bsonFromDB.iterator();
             try {
                 while(bsonDocumentMongoCursor.hasNext()) {
                     BsonDocument document = bsonDocumentMongoCursor.next();
                     byte [] data = SHA256.Digest.getInstance("SHA256").digest(document.get("dataBinary").asBinary().getData());
-                    System.out.println("From DB dataBinary: "+document.getBinary("dataBinary").getData().toString());
-                    System.out.println("From DB hash: "+document.getString("hash"));
-                    System.out.println("Hash of HashofDataBinary: "+data.toString());
+                    System.out.println("From DB - dataBinary : "+document.getBinary("dataBinary").getData().toString());
+                    System.out.println("From DB - hash: "+document.getString("hash"));
+                    System.out.println("Applied SHA2 on dataBinary : "+data.toString());
                     StringBuffer stringBuffer = new StringBuffer();
                     for (byte bytes : data) {
                         stringBuffer.append(String.format("%02x", bytes & 0xff));
                     }
-                    System.out.println("Hex of HashofDataBinary: "+stringBuffer.toString());
+                    System.out.println("Converted SHA2 formatted data to Hex: "+stringBuffer.toString());
 
                     if(payloadhash.asString().getValue().equals(stringBuffer.toString())){
-                        System.out.println("Equals");
+                        System.out.println("Hash stored in Corda Vault MATCHES WITH Hash of data stored in MongoDB");
                     }
                 }
             } finally {
@@ -91,44 +91,15 @@ public class ExampleClientRPC {
             e.printStackTrace();
         }
 
-
-
-       /* BsonDocument bdoc = new BsonDocument();
-        bdoc.put("amount", new BsonString(String.valueOf(state.getState().getData().getAmount())));
-        byte[] payload = toInputStream(bdoc);
-        StringBuffer stringBuffer = new StringBuffer();
-        try{
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(payload);
-            for (byte bytes : digest) {
-                stringBuffer.append(String.format("%02x", bytes & 0xff));
-            }
-        }catch(Exception e){
-            e.printStackTrace();
-        }
-
-        BsonDocument finaldoc = new BsonDocument();
-        finaldoc.put("payload", new BsonBinary(payload));
-        finaldoc.put("payloadhash", new BsonString(stringBuffer.toString()));
-
-        byte[] data = toInputStream(bdoc);
-        System.out.println("Binary "+data);*/
     }
 
     public static byte[] toInputStream(final BsonDocument document) {
         BasicOutputBuffer outputBuffer = new BasicOutputBuffer();
         BsonBinaryWriter writer = new BsonBinaryWriter(outputBuffer);
         DOCUMENT_CODEC.encode(writer, document, EncoderContext.builder().isEncodingCollectibleDocument(true).build());
-       // return new ByteArrayInputStream(outputBuffer.toByteArray());
         return outputBuffer.toByteArray();
     }
 
-    public static byte[] toInputStream(final BsonValue bsonValue) {
-        BasicOutputBuffer outputBuffer = new BasicOutputBuffer();
-        BsonBinaryWriter writer = new BsonBinaryWriter(outputBuffer);
-        VALUE_CODEC.encode(writer, bsonValue, EncoderContext.builder().isEncodingCollectibleDocument(true).build());
-        // return new ByteArrayInputStream(outputBuffer.toByteArray());
-        return outputBuffer.toByteArray();
-    }
 
 
    public static BsonDocument fromInputStream(final InputStream input) throws IOException {
@@ -152,9 +123,6 @@ public class ExampleClientRPC {
         final CordaRPCOps proxy = client.start("user1", "test").getProxy();
 
         // Grab all existing and future IOU states in the vault.
-        /*final DataFeed<Vault.Page<TradeState>, Vault.Update<TradeState>> dataFeed = proxy.vaultTrack(TradeState.class);
-        final Vault.Page<TradeState> snapshot = dataFeed.getSnapshot();
-        final Observable<Vault.Update<TradeState>> updates = dataFeed.getUpdates();*/
         final DataFeed<Vault.Page<TradeState>, Vault.Update<TradeState>> dataFeed = proxy.vaultTrack(TradeState.class);
         final Vault.Page<TradeState> snapshot = dataFeed.getSnapshot();
         final Observable<Vault.Update<TradeState>> updates = dataFeed.getUpdates();

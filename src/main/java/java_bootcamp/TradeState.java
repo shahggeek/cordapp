@@ -4,7 +4,6 @@ import com.google.common.collect.ImmutableList;
 import net.corda.core.contracts.ContractState;
 import net.corda.core.identity.AbstractParty;
 import net.corda.core.identity.Party;
-import org.bouncycastle.jcajce.provider.digest.SHA256;
 import org.bson.BsonBinary;
 import org.bson.BsonBinaryWriter;
 import org.bson.BsonDocument;
@@ -85,14 +84,16 @@ public class TradeState implements ContractState {
         byte[] payload = toInputStream(bdoc);
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(payload);
         StringBuffer stringBuffer = new StringBuffer();
+
+        //Convert to Hex format
         for (byte bytes : digest) {
             stringBuffer.append(String.format("%02x", bytes & 0xff));
         }
 
+        //Return byte[] of Bson BsonDocument
         BsonDocument finaldoc = new BsonDocument();
         finaldoc.put("payload", new BsonBinary(payload));
         finaldoc.put("payloadhash", new BsonString(stringBuffer.toString()));
-
         return toInputStream(finaldoc);
     }
 
@@ -100,7 +101,6 @@ public class TradeState implements ContractState {
         BasicOutputBuffer outputBuffer = new BasicOutputBuffer();
         BsonBinaryWriter writer = new BsonBinaryWriter(outputBuffer);
         DOCUMENT_CODEC.encode(writer, document, EncoderContext.builder().isEncodingCollectibleDocument(true).build());
-        // return new ByteArrayInputStream(outputBuffer.toByteArray());
         return outputBuffer.toByteArray();
     }
 

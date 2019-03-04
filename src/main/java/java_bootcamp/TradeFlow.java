@@ -19,10 +19,12 @@ public class TradeFlow extends FlowLogic<SignedTransaction> {
 
     private final ProgressTracker progressTracker = new ProgressTracker();
 
+    private final String tradeId;
     private final Party counterparty;
     private final BigDecimal amount;
 
-    public TradeFlow(Party counterparty, BigDecimal amount) {
+    public TradeFlow(String tradeId, Party counterparty, BigDecimal amount) {
+        this.tradeId = tradeId;
         this.counterparty = counterparty;
         this.amount = amount;
     }
@@ -40,7 +42,7 @@ public class TradeFlow extends FlowLogic<SignedTransaction> {
         // We get a reference to our own identity.
         Party initiatingParty = getOurIdentity();
 
-        TradeState tradeState = new TradeState("1001", "A101", "shah", amount, initiatingParty, counterparty);
+        TradeState tradeState = new TradeState( tradeId, "A101", "shah", amount, initiatingParty, counterparty);
         TradeContract.Create command = new TradeContract.Create();
 
         TransactionBuilder transactionBuilder = new TransactionBuilder(notary);
