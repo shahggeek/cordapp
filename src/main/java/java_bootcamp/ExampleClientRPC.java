@@ -1,15 +1,19 @@
 package java_bootcamp;
 
+import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import net.corda.client.rpc.CordaRPCClient;
 import net.corda.client.rpc.CordaRPCClientConfiguration;
+import net.corda.core.contracts.ContractState;
 import net.corda.core.contracts.StateAndRef;
 import net.corda.core.messaging.CordaRPCOps;
 import net.corda.core.messaging.DataFeed;
 import net.corda.core.node.services.Vault;
 import net.corda.core.utilities.NetworkHostAndPort;
 import org.apache.activemq.artemis.api.core.ActiveMQException;
+import org.bouncycastle.jcajce.provider.digest.SHA256;
 import org.bson.*;
 import org.bson.codecs.*;
 import org.bson.io.BasicOutputBuffer;
@@ -19,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -31,6 +36,7 @@ import java.util.logging.Logger;
 public class ExampleClientRPC {
 
     private static Codec<BsonDocument> DOCUMENT_CODEC = new BsonDocumentCodec();
+    private static Codec<BsonValue> VALUE_CODEC = new BsonValueCodec();
 
     private static void logState(StateAndRef<TradeState> state) {
         System.out.println("{Data: }"+ state.getState().getData());
@@ -48,15 +54,39 @@ public class ExampleClientRPC {
             System.out.println("{payloadhash: }"+ payloadhash.asString().getValue());
 
             BsonDocument mongoDbDoc = new BsonDocument();
-            mongoDbDoc.put("data", new BsonString(bsonDocumentReal.toString()));
+            mongoDbDoc.put("dataString", new BsonString(bsonDocumentReal.toString()));
+            mongoDbDoc.put("dataBinary", new BsonBinary(payload));
             mongoDbDoc.put("hash", new BsonString(payloadhash.asString().getValue()));
             mongoDbDoc.put("contractId", new BsonString(UUID.randomUUID().toString()));
 
             MongoHelper mongoHelper = new MongoHelper();
             MongoDatabase cordaDb = mongoHelper.getDatabase();
             MongoCollection<BsonDocument> ledger = cordaDb.getCollection("ledger", BsonDocument.class);
-            ledger.insertOne(mongoDbDoc);
+           // ledger.insertOne(mongoDbDoc);
             System.out.println("Bson Record Inserted in MongoDb");
+
+            FindIterable<BsonDocument> bsonFromDB = ledger.find();
+            MongoCursor<BsonDocument> bsonDocumentMongoCursor = bsonFromDB.iterator();
+            try {
+                while(bsonDocumentMongoCursor.hasNext()) {
+                    BsonDocument document = bsonDocumentMongoCursor.next();
+                    byte [] data = SHA256.Digest.getInstance("SHA256").digest(document.get("dataBinary").asBinary().getData());
+                    System.out.println("From DB dataBinary: "+document.getBinary("dataBinary").getData().toString());
+                    System.out.println("From DB hash: "+document.getString("hash"));
+                    System.out.println("Hash of HashofDataBinary: "+data.toString());
+                    StringBuffer stringBuffer = new StringBuffer();
+                    for (byte bytes : data) {
+                        stringBuffer.append(String.format("%02x", bytes & 0xff));
+                    }
+                    System.out.println("Hex of HashofDataBinary: "+stringBuffer.toString());
+
+                    if(payloadhash.asString().getValue().equals(stringBuffer.toString())){
+                        System.out.println("Equals");
+                    }
+                }
+            } finally {
+                bsonDocumentMongoCursor.close();
+            }
         }catch (Exception e){
             e.printStackTrace();
         }
@@ -92,6 +122,15 @@ public class ExampleClientRPC {
         return outputBuffer.toByteArray();
     }
 
+    public static byte[] toInputStream(final BsonValue bsonValue) {
+        BasicOutputBuffer outputBuffer = new BasicOutputBuffer();
+        BsonBinaryWriter writer = new BsonBinaryWriter(outputBuffer);
+        VALUE_CODEC.encode(writer, bsonValue, EncoderContext.builder().isEncodingCollectibleDocument(true).build());
+        // return new ByteArrayInputStream(outputBuffer.toByteArray());
+        return outputBuffer.toByteArray();
+    }
+
+
    public static BsonDocument fromInputStream(final InputStream input) throws IOException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         byte[] buffer = new byte[1024];
@@ -104,7 +143,7 @@ public class ExampleClientRPC {
         return DOCUMENT_CODEC.decode(bsonReader, DecoderContext.builder().build());
     }
 
-    public static void main(String[] args) throws ActiveMQException, InterruptedException, ExecutionException {
+    public static void main(String[] args) throws ActiveMQException, InterruptedException, ExecutionException, ClassNotFoundException, IllegalAccessException, InstantiationException {
 
         final NetworkHostAndPort nodeAddress = NetworkHostAndPort.parse("localhost:10004");
         final CordaRPCClient client = new CordaRPCClient(nodeAddress, CordaRPCClientConfiguration.DEFAULT);
@@ -116,7 +155,6 @@ public class ExampleClientRPC {
         /*final DataFeed<Vault.Page<TradeState>, Vault.Update<TradeState>> dataFeed = proxy.vaultTrack(TradeState.class);
         final Vault.Page<TradeState> snapshot = dataFeed.getSnapshot();
         final Observable<Vault.Update<TradeState>> updates = dataFeed.getUpdates();*/
-
         final DataFeed<Vault.Page<TradeState>, Vault.Update<TradeState>> dataFeed = proxy.vaultTrack(TradeState.class);
         final Vault.Page<TradeState> snapshot = dataFeed.getSnapshot();
         final Observable<Vault.Update<TradeState>> updates = dataFeed.getUpdates();
@@ -125,4 +163,6 @@ public class ExampleClientRPC {
         snapshot.getStates().forEach(ExampleClientRPC::logState);
         updates.toBlocking().subscribe(update -> update.getProduced().forEach(ExampleClientRPC::logState));
     }
+
+
 }
