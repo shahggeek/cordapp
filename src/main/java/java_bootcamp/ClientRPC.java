@@ -34,24 +34,24 @@ import java.util.concurrent.ExecutionException;
 public class ClientRPC {
 
     //TODO Replace sysout with Loggers
-    
+
     private static Codec<BsonDocument> DOCUMENT_CODEC = new BsonDocumentCodec();
     private static Codec<BsonValue> VALUE_CODEC = new BsonValueCodec();
 
     public static void main(String[] args) throws ActiveMQException, InterruptedException, ExecutionException, ClassNotFoundException, IllegalAccessException, InstantiationException {
 
+        //Connect to one of the Party running on 10004 port
         final NetworkHostAndPort nodeAddress = NetworkHostAndPort.parse("localhost:10004");
         final CordaRPCClient client = new CordaRPCClient(nodeAddress, CordaRPCClientConfiguration.DEFAULT);
 
-        // Can be amended in the com.example.Main file.
         final CordaRPCOps proxy = client.start("user1", "test").getProxy();
 
-        // Grab all existing and future IOU states in the vault.
+        // Grab all existing and future TradeState states in the vault.
         final DataFeed<Vault.Page<TradeState>, Vault.Update<TradeState>> dataFeed = proxy.vaultTrack(TradeState.class);
         final Vault.Page<TradeState> snapshot = dataFeed.getSnapshot();
         final Observable<Vault.Update<TradeState>> updates = dataFeed.getUpdates();
 
-        // Log the 'placed' IOUs and listen for new ones.
+        // Invoke StoreInDB and then reconcile on every event 
         snapshot.getStates().forEach(ClientRPC::storeInDBAndReconcile);
         updates.toBlocking().subscribe(update -> update.getProduced().forEach(ClientRPC::storeInDBAndReconcile));
     }
