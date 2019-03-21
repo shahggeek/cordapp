@@ -51,7 +51,7 @@ public class ClientRPC {
         final Vault.Page<TradeState> snapshot = dataFeed.getSnapshot();
         final Observable<Vault.Update<TradeState>> updates = dataFeed.getUpdates();
 
-        // Invoke StoreInDB and then reconcile on every event 
+        // Invoke StoreInDB and then reconcile on every event
         snapshot.getStates().forEach(ClientRPC::storeInDBAndReconcile);
         updates.toBlocking().subscribe(update -> update.getProduced().forEach(ClientRPC::storeInDBAndReconcile));
     }
@@ -74,12 +74,25 @@ public class ClientRPC {
 
     }
 
+    @NotNull
+    private static void insertDocumentToDB(BsonDocument payloadBson, BsonValue payloadHash, MongoCollection<BsonDocument> bsonCollection) {
+        BsonDocument bsonDocument = new BsonDocument();
+        //Insert Payload as BSON , so Structure in MongoDB is correct and searchable
+        bsonDocument.put("payload",payloadBson);
+        //Insert payloadHash as String , to compare with Hex format during recon
+        bsonDocument.put("payloadhash",payloadHash.asString());
+        bsonCollection.insertOne(bsonDocument);
+        System.out.println("Bson Record Inserted in MongoDb");
+        return ;
+    }
+
     private static void reconcilePayloadHash(BsonValue payloadHash, MongoCollection<BsonDocument> collection) throws NoSuchAlgorithmException {
         //Fetching from MongoDB and comparing hash
         FindIterable<BsonDocument> bsonFromDB = collection.find();
         MongoCursor<BsonDocument> bsonDocumentMongoCursor = bsonFromDB.iterator();
         try {
             while(bsonDocumentMongoCursor.hasNext()) {
+                //Now for POC, we are iterating with all records to find match, In real, extact TradeID can be used to match Hash
                 BsonDocument documentFromDb = bsonDocumentMongoCursor.next();
                 BsonDocument payloadFromDB = (BsonDocument) documentFromDb.get("payload");
                 byte [] data = SHA256.Digest.getInstance("SHA256").digest( toInputStream(payloadFromDB));                    ;
@@ -97,15 +110,7 @@ public class ClientRPC {
             bsonDocumentMongoCursor.close();
         }
     }
-    @NotNull
-    private static void insertDocumentToDB(BsonDocument bsonDocumentPayload, BsonValue payloadHash, MongoCollection<BsonDocument> bsonCollection) {
-        BsonDocument bsonDocument = new BsonDocument();
-        bsonDocument.put("payload",bsonDocumentPayload);
-        bsonDocument.put("payloadhash",payloadHash.asString());
-        bsonCollection.insertOne(bsonDocument);
-        System.out.println("Bson Record Inserted in MongoDb");
-        return ;
-    }
+
 
     public static byte[] toInputStream(final BsonDocument document) {
         BasicOutputBuffer outputBuffer = new BasicOutputBuffer();
