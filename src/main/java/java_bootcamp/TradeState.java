@@ -31,12 +31,41 @@ public class TradeState implements ContractState {
 
     private static Codec<BsonDocument> DOCUMENT_CODEC = new BsonDocumentCodec();
 
+
+
     public TradeState(String tradeId, String book, String trader, BigDecimal amount, Party initiatingParty, Party counterparty){
         this.tradeId = tradeId;
         this.amount = amount;
         this.book = book;
         this.trader = trader;
         this.initiatingParty = initiatingParty;
+        this.counterparty = counterparty;
+    }
+
+    public TradeState() {
+    }
+
+    public void setTradeId(String tradeId) {
+        this.tradeId = tradeId;
+    }
+
+    public void setAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
+
+    public void setBook(String book) {
+        this.book = book;
+    }
+
+    public void setTrader(String trader) {
+        this.trader = trader;
+    }
+
+    public void setInitiatingParty(Party initiatingParty) {
+        this.initiatingParty = initiatingParty;
+    }
+
+    public void setCounterparty(Party counterparty) {
         this.counterparty = counterparty;
     }
 
